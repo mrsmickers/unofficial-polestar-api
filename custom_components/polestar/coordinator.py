@@ -107,6 +107,7 @@ class PolestarVehicleData:
     software: CarSoftwareInfo | None = None
     software_fetch_succeeded: bool = False
     ota_schedule: Scheduler | None = None
+    ota_schedule_fetch_succeeded: bool = False
     mycars: MyCarEntry | None = None
     target_soc: TargetSocResponse | None = None
     amp_limit: AmpLimitResponse | None = None
@@ -141,6 +142,10 @@ _FETCH_ATTRS: tuple[tuple[str, str], ...] = (
     ("climate_timer_settings", "get_climate_timer_settings"),
 )
 _FETCH_ATTR_LOOKUP = dict(_FETCH_ATTRS)
+_FETCH_SUCCESS_FLAGS = {
+    "software": "software_fetch_succeeded",
+    "ota_schedule": "ota_schedule_fetch_succeeded",
+}
 
 
 class PolestarCoordinator(DataUpdateCoordinator[PolestarVehicleData]):
@@ -276,16 +281,16 @@ class PolestarCoordinator(DataUpdateCoordinator[PolestarVehicleData]):
             if isinstance(result, Exception):
                 _LOGGER.debug("Failed to fetch %s for %s: %s", attr, self.vehicle.vin, result)
                 values[attr] = getattr(previous, attr)
-                if attr == "software":
-                    values["software_fetch_succeeded"] = False
+                if flag_name := _FETCH_SUCCESS_FLAGS.get(attr):
+                    values[flag_name] = False
                 continue
 
-            if attr == "software":
-                # A successful empty OTA-discovery response means there is
-                # currently no update advertised. Clear stale pending data;
-                # an exception above is kept distinct via the success flag.
+            if flag_name := _FETCH_SUCCESS_FLAGS.get(attr):
+                # A successful completed call with no payload means the
+                # provider currently has no value. Clear stale data; a
+                # transport failure above is distinct via the success flag.
                 values[attr] = result
-                values["software_fetch_succeeded"] = True
+                values[flag_name] = True
             else:
                 result = self._merge_partial_update(attr, getattr(previous, attr), result)
                 values[attr] = getattr(previous, attr) if result is None else result
@@ -298,10 +303,6 @@ class PolestarCoordinator(DataUpdateCoordinator[PolestarVehicleData]):
         values, successful_fetches = await self._async_fetch_values(_FETCH_ATTR_LOOKUP, previous)
 
         if successful_fetches == 0:
-            if self.data is not None:
-                if "software_fetch_succeeded" in values:
-                    return replace(self.data, **values)
-                return self.data
             raise UpdateFailed("All API calls failed")
 
         data = PolestarVehicleData(**values)
@@ -317,7 +318,7 @@ class PolestarCoordinator(DataUpdateCoordinator[PolestarVehicleData]):
         previous = self.data or PolestarVehicleData()
         values, successful_fetches = await self._async_fetch_values(attrs, previous)
         if successful_fetches == 0:
-            if "software_fetch_succeeded" in values:
+            if any(flag in values for flag in _FETCH_SUCCESS_FLAGS.values()):
                 self.async_set_updated_data(replace(previous, **values))
             return
 

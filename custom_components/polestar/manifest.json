@@ -9,7 +9,7 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/kildahldev/unofficial-polestar-api/issues",
   "requirements": [
-    "unofficial-polestar-api @ https://github.com/mrsmickers/unofficial-polestar-api/releases/download/v0.3.3b3/unofficial_polestar_api-0.3.3b3-py3-none-any.whl#sha256=0806a84c80ade4e18bb895c07dae13c54904f8fc356897cdb916fce11191add5"
+    "unofficial-polestar-api @ https://github.com/mrsmickers/unofficial-polestar-api/releases/download/v0.3.3b4/unofficial_polestar_api-0.3.3b4-py3-none-any.whl#sha256=3b81a7b30cd744d8acc028a8788be64b1f1870e9612c9b7f091f96b615af3e72"
   ],
-  "version": "0.3.3b3"
+  "version": "0.3.3b4"
 }

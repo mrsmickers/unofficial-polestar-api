@@ -122,7 +122,11 @@ class PolestarOtaUpdate(PolestarEntity, UpdateEntity, RestoreEntity):
     def extra_state_attributes(self) -> dict[str, str | None]:
         data = self.coordinator.data
         software = data.software if data and data.software_fetch_succeeded else None
-        schedule = data.ota_schedule if data else None
+        schedule = (
+            data.ota_schedule
+            if data and data.ota_schedule_fetch_succeeded
+            else None
+        )
         return {
             "software_id": software.software_id if software else None,
             "software_state": enum_name(software.state) if software else None,

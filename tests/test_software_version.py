@@ -12,7 +12,12 @@ from types import SimpleNamespace
 import pytest
 
 from polestar_api.models.mycars import CarDetails, MyCarEntry
-from polestar_api.models.ota import CarSoftwareInfo, SoftwareState
+from polestar_api.models.ota import (
+    CarSoftwareInfo,
+    Scheduler,
+    ScheduleStatus,
+    SoftwareState,
+)
 
 
 def _load_module(name: str, relative_path: str):
@@ -309,3 +314,55 @@ async def test_coordinator_distinguishes_empty_ota_success_from_failure(monkeypa
     assert captured[-1].software_fetch_succeeded is False
     with pytest.raises(FakeHomeAssistantError):
         coordinator._require_software_id()
+
+
+@pytest.mark.asyncio
+async def test_targeted_schedule_failure_invalidates_schedule_status(monkeypatch) -> None:
+    coordinator_module = _load_coordinator_module(monkeypatch)
+    previous = coordinator_module.PolestarVehicleData(
+        ota_schedule=Scheduler(status=ScheduleStatus.SCHEDULED),
+        ota_schedule_fetch_succeeded=True,
+    )
+
+    class Vehicle:
+        vin = "TARGET-VIN"
+
+        async def get_ota_schedule(self):
+            raise TimeoutError("temporary schedule timeout")
+
+    coordinator = object.__new__(coordinator_module.PolestarCoordinator)
+    coordinator.vehicle = Vehicle()
+    coordinator.data = previous
+
+    def capture(data):
+        coordinator.data = data
+
+    coordinator.async_set_updated_data = capture
+    await coordinator.async_request_attrs_refresh("ota_schedule")
+
+    assert coordinator.data.ota_schedule is previous.ota_schedule
+    assert coordinator.data.ota_schedule_fetch_succeeded is False
+
+
+@pytest.mark.asyncio
+async def test_total_poll_failure_raises_after_initial_success(monkeypatch) -> None:
+    coordinator_module = _load_coordinator_module(monkeypatch)
+
+    class AllFailVehicle:
+        vin = "TARGET-VIN"
+
+        def __getattr__(self, name):
+            async def fail():
+                raise TimeoutError(f"{name} timed out")
+
+            return fail
+
+    coordinator = object.__new__(coordinator_module.PolestarCoordinator)
+    coordinator.vehicle = AllFailVehicle()
+    coordinator.data = coordinator_module.PolestarVehicleData(
+        mycars=_mycars(),
+        software_fetch_succeeded=True,
+    )
+
+    with pytest.raises(FakeUpdateFailed, match="All API calls failed"):
+        await coordinator._async_update_data()

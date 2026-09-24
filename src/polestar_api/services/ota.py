@@ -58,19 +58,16 @@ class OtaServiceClient:
     async def get_schedule(self) -> Scheduler | None:
         """Get the current OTA schedule from the first stream message, or ``None`` if missing."""
         metadata = await self._metadata()
-        try:
-            async with asyncio.timeout(_STREAM_TIMEOUT):
-                async for data in grpc_call.unary_stream(
-                    self._connection.channel,
-                    f"{self._scheduler}/GetSchedule",
-                    self._vin_bytes(),
-                    metadata=metadata,
-                ):
-                    raw = decode(data, {1: ("timer", "message")})
-                    if raw.get("timer"):
-                        return Scheduler.from_bytes(raw["timer"])
-        except TimeoutError:
-            pass
+        async with asyncio.timeout(_STREAM_TIMEOUT):
+            async for data in grpc_call.unary_stream(
+                self._connection.channel,
+                f"{self._scheduler}/GetSchedule",
+                self._vin_bytes(),
+                metadata=metadata,
+            ):
+                raw = decode(data, {1: ("timer", "message")})
+                if raw.get("timer"):
+                    return cast(Scheduler, Scheduler.from_bytes(raw["timer"]))
         return None
 
     async def schedule(self, software_id: str, relative_time: int = 0) -> Scheduler | None:
