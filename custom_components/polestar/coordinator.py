@@ -299,6 +299,8 @@ class PolestarCoordinator(DataUpdateCoordinator[PolestarVehicleData]):
 
         if successful_fetches == 0:
             if self.data is not None:
+                if "software_fetch_succeeded" in values:
+                    return replace(self.data, **values)
                 return self.data
             raise UpdateFailed("All API calls failed")
 
@@ -315,6 +317,8 @@ class PolestarCoordinator(DataUpdateCoordinator[PolestarVehicleData]):
         previous = self.data or PolestarVehicleData()
         values, successful_fetches = await self._async_fetch_values(attrs, previous)
         if successful_fetches == 0:
+            if "software_fetch_succeeded" in values:
+                self.async_set_updated_data(replace(previous, **values))
             return
 
         data = replace(previous, **values)

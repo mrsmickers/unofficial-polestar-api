@@ -6,9 +6,7 @@ from polestar_api.models.mycars import MyCarEntry
 from polestar_api.models.ota import CarSoftwareInfo, SoftwareState
 
 _INSTALLED_OTA_STATES = {
-    SoftwareState.UNKNOWN,
     SoftwareState.INSTALLATION_COMPLETED,
-    SoftwareState.INSTALLATION_UNKNOWN,
 }
 
 
@@ -26,6 +24,19 @@ def installed_software_version(
     ):
         return software.new_sw_version
     return None
+
+
+def software_state_value(
+    *,
+    software_fetch_succeeded: bool,
+    software: CarSoftwareInfo | None,
+) -> str | None:
+    """Return OTA state text without conflating fetch failure and no update."""
+    if not software_fetch_succeeded:
+        return None
+    if software is None:
+        return "no_update_available"
+    return software.state.name.lower()
 
 
 def advertised_software_version(

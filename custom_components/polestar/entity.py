@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import PolestarCoordinator
-
-if TYPE_CHECKING:
-    from polestar_api.vehicle import Vehicle
+from .software import installed_software_version
 
 
 class PolestarEntity(CoordinatorEntity[PolestarCoordinator]):
@@ -32,6 +28,13 @@ class PolestarEntity(CoordinatorEntity[PolestarCoordinator]):
         else:
             name_parts.append(f"({v.vin[-6:]})")
 
+        data = self.coordinator.data
+        current_installed_version = (
+            installed_software_version(data.software, data.mycars)
+            if data
+            else None
+        )
+
         return DeviceInfo(
             identifiers={(DOMAIN, v.vin)},
             name=" ".join(name_parts),
@@ -39,12 +42,8 @@ class PolestarEntity(CoordinatorEntity[PolestarCoordinator]):
             model=v.model_name,
             serial_number=v.vin,
             sw_version=(
-                self.coordinator.installed_version_cache
-                or (
-                    self.coordinator.data.software.new_sw_version
-                    if self.coordinator.data and self.coordinator.data.software
-                    else None
-                )
+                current_installed_version
+                or self.coordinator.installed_version_cache
             ),
         )
 

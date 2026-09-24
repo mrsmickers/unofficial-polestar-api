@@ -54,7 +54,7 @@ from polestar_api.models.precleaning import PreCleaningErrorType, PreCleaningSta
 from .const import DOMAIN
 from .coordinator import PolestarVehicleData
 from .entity import PolestarEntity
-from .software import installed_software_version
+from .software import installed_software_version, software_state_value
 from .utils import enum_name, enum_options, serialize_charge_location
 
 
@@ -442,12 +442,9 @@ SENSORS: tuple[PolestarSensorDescription, ...] = (
         options=[*enum_options(SoftwareState, exclude_unspecified=False), "no_update_available"],
         # A successful empty OTA-discovery call means no update is
         # advertised. A failed call is unknown, not "no update".
-        value_fn=lambda d: (
-            enum_name(d.software.state, allow_unspecified=True)
-            if d.software
-            else "no_update_available"
-            if d.software_fetch_succeeded
-            else None
+        value_fn=lambda d: software_state_value(
+            software_fetch_succeeded=d.software_fetch_succeeded,
+            software=d.software,
         ),
     ),
     PolestarSensorDescription(

@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from .. import grpc as grpc_call
 from ..codec import decode, encode
@@ -44,19 +43,16 @@ class OtaServiceClient:
             {"vin": self._vin, "locale": "en"},
         )
         metadata = await self._metadata()
-        try:
-            async with asyncio.timeout(_STREAM_TIMEOUT):
-                async for data in grpc_call.unary_stream(
-                    self._connection.channel,
-                    f"{self._discovery}/GetSoftwareInfo",
-                    req,
-                    metadata=metadata,
-                ):
-                    raw = decode(data, {1: ("info", "message")})
-                    if raw.get("info"):
-                        return CarSoftwareInfo.from_bytes(raw["info"])
-        except TimeoutError:
-            pass
+        async with asyncio.timeout(_STREAM_TIMEOUT):
+            async for data in grpc_call.unary_stream(
+                self._connection.channel,
+                f"{self._discovery}/GetSoftwareInfo",
+                req,
+                metadata=metadata,
+            ):
+                raw = decode(data, {1: ("info", "message")})
+                if raw.get("info"):
+                    return cast(CarSoftwareInfo, CarSoftwareInfo.from_bytes(raw["info"]))
         return None
 
     async def get_schedule(self) -> Scheduler | None:
