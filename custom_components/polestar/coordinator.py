@@ -319,7 +319,8 @@ class PolestarCoordinator(DataUpdateCoordinator[PolestarVehicleData]):
         values, successful_fetches = await self._async_fetch_values(attrs, previous)
         if successful_fetches == 0:
             if any(flag in values for flag in _FETCH_SUCCESS_FLAGS.values()):
-                self.async_set_updated_data(replace(previous, **values))
+                self.data = replace(previous, **values)
+                self.async_update_listeners()
             return
 
         data = replace(previous, **values)

@@ -300,18 +300,15 @@ async def test_coordinator_distinguishes_empty_ota_success_from_failure(monkeypa
     assert values["software"] is previous_software
     assert values["software_fetch_succeeded"] is False
 
-    captured = []
+    notifications = []
     coordinator.data = previous
-
-    def capture(data):
-        captured.append(data)
-        coordinator.data = data
-
-    coordinator.async_set_updated_data = capture
+    coordinator.last_update_success = False
+    coordinator.async_update_listeners = lambda: notifications.append(True)
     await coordinator.async_request_attrs_refresh("software")
 
-    assert captured
-    assert captured[-1].software_fetch_succeeded is False
+    assert notifications == [True]
+    assert coordinator.data.software_fetch_succeeded is False
+    assert coordinator.last_update_success is False
     with pytest.raises(FakeHomeAssistantError):
         coordinator._require_software_id()
 
@@ -333,15 +330,15 @@ async def test_targeted_schedule_failure_invalidates_schedule_status(monkeypatch
     coordinator = object.__new__(coordinator_module.PolestarCoordinator)
     coordinator.vehicle = Vehicle()
     coordinator.data = previous
-
-    def capture(data):
-        coordinator.data = data
-
-    coordinator.async_set_updated_data = capture
+    coordinator.last_update_success = False
+    notifications = []
+    coordinator.async_update_listeners = lambda: notifications.append(True)
     await coordinator.async_request_attrs_refresh("ota_schedule")
 
+    assert notifications == [True]
     assert coordinator.data.ota_schedule is previous.ota_schedule
     assert coordinator.data.ota_schedule_fetch_succeeded is False
+    assert coordinator.last_update_success is False
 
 
 @pytest.mark.asyncio
@@ -361,8 +358,24 @@ async def test_total_poll_failure_raises_after_initial_success(monkeypatch) -> N
     coordinator.vehicle = AllFailVehicle()
     coordinator.data = coordinator_module.PolestarVehicleData(
         mycars=_mycars(),
+        software=CarSoftwareInfo(
+            software_id="stale-update",
+            new_sw_version="P4.2.13",
+            state=SoftwareState.DOWNLOAD_READY,
+        ),
         software_fetch_succeeded=True,
     )
+    coordinator.last_update_success = True
 
     with pytest.raises(FakeUpdateFailed, match="All API calls failed"):
         await coordinator._async_update_data()
+
+    # Home Assistant Core's refresh wrapper marks the failed full poll here.
+    coordinator.last_update_success = False
+    notifications = []
+    coordinator.async_update_listeners = lambda: notifications.append(True)
+    await coordinator.async_request_attrs_refresh("software")
+
+    assert notifications == [True]
+    assert coordinator.last_update_success is False
+    assert coordinator.data.software_fetch_succeeded is False
