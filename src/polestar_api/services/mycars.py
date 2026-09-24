@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from .. import grpc as grpc_call
 from ..codec import decode, encode
@@ -67,15 +67,24 @@ class MyCarsServiceClient:
             return None
 
         raw_entries = car_field if isinstance(car_field, list) else [car_field]
-        entries = [MyCarEntry.from_bytes(entry_bytes) for entry_bytes in raw_entries]
+        entries = [
+            cast(MyCarEntry, MyCarEntry.from_bytes(entry_bytes))
+            for entry_bytes in raw_entries
+        ]
 
         matching = next(
             (entry for entry in entries if entry.details and entry.details.vin == self._vin),
             None,
         )
-        if matching is None and len(entries) == 1:
-            # Single-car accounts sometimes don't echo the vin back
-            # identically; fall back to the only entry present.
+        if (
+            matching is None
+            and len(entries) == 1
+            and entries[0].details is not None
+            and not entries[0].details.vin
+        ):
+            # A single-car response may omit the VIN entirely. Accept that
+            # unambiguous shape, but never bind a different explicit VIN to
+            # the requested vehicle.
             matching = entries[0]
         if matching is None:
             _LOGGER.warning(

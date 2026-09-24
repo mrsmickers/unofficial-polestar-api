@@ -14,10 +14,12 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
+from polestar_api.models.ota import SoftwareState
+
 from .const import DOMAIN
 from .coordinator import PolestarCoordinator
 from .entity import PolestarEntity
-from polestar_api.models.ota import SoftwareState
+from .software import advertised_software_version, installed_software_version
 from .utils import enum_name, timestamp_to_iso
 
 _IN_PROGRESS_STATES = {
@@ -72,47 +74,43 @@ class PolestarOtaUpdate(PolestarEntity, UpdateEntity, RestoreEntity):
     def available(self) -> bool:
         if not super().available or self.coordinator.data is None:
             return False
-        return self.coordinator.data.software is not None or self.coordinator.data.mycars is not None
+        data = self.coordinator.data
+        return data.software_fetch_succeeded and (
+            data.software is not None or data.mycars is not None
+        )
 
     @property
     def installed_version(self) -> str | None:
-        if self.coordinator.installed_version_cache:
-            return self.coordinator.installed_version_cache
         data = self.coordinator.data
-        if (
-            data
-            and data.software
-            and data.software.new_sw_version
-            and data.software.state in {
-                SoftwareState.UNKNOWN,
-                SoftwareState.INSTALLATION_COMPLETED,
-                SoftwareState.INSTALLATION_UNKNOWN,
-            }
-        ):
-            return data.software.new_sw_version
-        if data and data.mycars and data.mycars.details:
-            return data.mycars.details.installed_software_version or None
-        return None
+        version = (
+            installed_software_version(data.software, data.mycars)
+            if data
+            else None
+        )
+        return version or self.coordinator.installed_version_cache
 
     @property
     def latest_version(self) -> str | None:
-        if self.coordinator.data and self.coordinator.data.software and self.coordinator.data.software.new_sw_version:
-            return self.coordinator.data.software.new_sw_version
-        # No pending OTA update advertised (OtaDiscoveryService returns
-        # empty when nothing is queued) — fall back to installed_version
-        # so the entity reads "up to date" rather than showing a blank
-        # latest_version with a real installed_version.
-        return self.installed_version
+        data = self.coordinator.data
+        if data is None:
+            return None
+        return advertised_software_version(
+            software_fetch_succeeded=data.software_fetch_succeeded,
+            software=data.software,
+            mycars=data.mycars,
+        )
 
     @property
     def in_progress(self) -> bool | int:
-        if self.coordinator.data and self.coordinator.data.software:
-            return self.coordinator.data.software.state in _IN_PROGRESS_STATES
+        data = self.coordinator.data
+        if data and data.software_fetch_succeeded and data.software:
+            return data.software.state in _IN_PROGRESS_STATES
         return False
 
     @property
     def release_summary(self) -> str | None:
-        software = self.coordinator.data.software if self.coordinator.data else None
+        data = self.coordinator.data
+        software = data.software if data and data.software_fetch_succeeded else None
         if software is None or software.description is None:
             return None
         parts = [part for part in (software.description.short_desc, software.description.long_desc) if part]
@@ -122,8 +120,9 @@ class PolestarOtaUpdate(PolestarEntity, UpdateEntity, RestoreEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, str | None]:
-        software = self.coordinator.data.software if self.coordinator.data else None
-        schedule = self.coordinator.data.ota_schedule if self.coordinator.data else None
+        data = self.coordinator.data
+        software = data.software if data and data.software_fetch_succeeded else None
+        schedule = data.ota_schedule if data else None
         return {
             "software_id": software.software_id if software else None,
             "software_state": enum_name(software.state) if software else None,

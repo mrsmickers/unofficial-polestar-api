@@ -54,6 +54,7 @@ from polestar_api.models.precleaning import PreCleaningErrorType, PreCleaningSta
 from .const import DOMAIN
 from .coordinator import PolestarVehicleData
 from .entity import PolestarEntity
+from .software import installed_software_version
 from .utils import enum_name, enum_options, serialize_charge_location
 
 
@@ -413,14 +414,10 @@ SENSORS: tuple[PolestarSensorDescription, ...] = (
         key="software_version",
         name="Software version",
         icon="mdi:update",
-        # OTA discovery (d.software) only reports a *pending* update and
-        # comes back empty when nothing is queued — it can't say what's
-        # currently installed on a car that's already up to date. MyCars
-        # (d.mycars) always reports the installed version regardless.
-        # Prefer OTA's value when present (it may reflect an in-progress
-        # install's target version), fall back to MyCars otherwise.
-        value_fn=lambda d: (d.software.new_sw_version if d.software else None)
-        or (d.mycars.details.installed_software_version if d.mycars and d.mycars.details else None),
+        # MyCars reports what is actually installed; OTA discovery reports
+        # the target of a pending/in-progress update. Never label the target
+        # version as already installed.
+        value_fn=lambda d: installed_software_version(d.software, d.mycars),
     ),
     PolestarSensorDescription(
         key="model_year",
@@ -442,14 +439,16 @@ SENSORS: tuple[PolestarSensorDescription, ...] = (
         translation_key="software_state",
         device_class=SensorDeviceClass.ENUM,
         entity_category=EntityCategory.DIAGNOSTIC,
-        # d.software is None when OTA discovery has nothing pending (a
-        # normal, common state — see MyCars vs OTA discovery distinction
-        # in models/mycars.py) — surface that plainly instead of falling
-        # through to HA's generic "Unknown" for a bare None value, which
-        # is indistinguishable in the UI from the real SoftwareState.UNKNOWN
-        # enum member.
         options=[*enum_options(SoftwareState, exclude_unspecified=False), "no_update_available"],
-        value_fn=lambda d: enum_name(d.software.state, allow_unspecified=True) if d.software else "no_update_available",
+        # A successful empty OTA-discovery call means no update is
+        # advertised. A failed call is unknown, not "no update".
+        value_fn=lambda d: (
+            enum_name(d.software.state, allow_unspecified=True)
+            if d.software
+            else "no_update_available"
+            if d.software_fetch_succeeded
+            else None
+        ),
     ),
     PolestarSensorDescription(
         key="climate_running_status",

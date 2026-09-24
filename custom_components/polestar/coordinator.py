@@ -6,7 +6,8 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field, replace
-from datetime import time as dt_time, timedelta
+from datetime import time as dt_time
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 from grpclib.const import Status as GrpcStatus
@@ -24,8 +25,8 @@ from polestar_api.models.charging import (
     ChargeTargetLevelSettingType,
     ChargeTimerResponse,
     DailyTime,
-    TimeZoneOffset,
     TargetSocResponse,
+    TimeZoneOffset,
 )
 from polestar_api.models.climate import ClimatizationInfo
 from polestar_api.models.climatization import HeatingIntensity
@@ -37,7 +38,7 @@ from polestar_api.models.health import Health
 from polestar_api.models.invocation import InvocationStatus
 from polestar_api.models.mycars import MyCarEntry
 from polestar_api.models.odometer import OdometerStatus
-from polestar_api.models.ota import CarSoftwareInfo, Scheduler, SoftwareState
+from polestar_api.models.ota import CarSoftwareInfo, Scheduler
 from polestar_api.models.parking_climate_timer import (
     ParkingClimateTimer,
     ParkingClimateTimerSettings,
@@ -45,7 +46,13 @@ from polestar_api.models.parking_climate_timer import (
 from polestar_api.models.precleaning import PreCleaningInfo
 from polestar_api.models.weather import WeatherReport
 
-from .const import CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL, STREAM_MAX_RETRIES, STREAM_RETRY_DELAY
+from .const import (
+    CONF_UPDATE_INTERVAL,
+    DEFAULT_UPDATE_INTERVAL,
+    STREAM_MAX_RETRIES,
+    STREAM_RETRY_DELAY,
+)
+from .software import installed_software_version
 from .utils import local_utc_offset_minutes
 
 if TYPE_CHECKING:
@@ -98,6 +105,7 @@ class PolestarVehicleData:
     precleaning: PreCleaningInfo | None = None
     weather: WeatherReport | None = None
     software: CarSoftwareInfo | None = None
+    software_fetch_succeeded: bool = False
     ota_schedule: Scheduler | None = None
     mycars: MyCarEntry | None = None
     target_soc: TargetSocResponse | None = None
@@ -268,10 +276,19 @@ class PolestarCoordinator(DataUpdateCoordinator[PolestarVehicleData]):
             if isinstance(result, Exception):
                 _LOGGER.debug("Failed to fetch %s for %s: %s", attr, self.vehicle.vin, result)
                 values[attr] = getattr(previous, attr)
+                if attr == "software":
+                    values["software_fetch_succeeded"] = False
                 continue
 
-            result = self._merge_partial_update(attr, getattr(previous, attr), result)
-            values[attr] = getattr(previous, attr) if result is None else result
+            if attr == "software":
+                # A successful empty OTA-discovery response means there is
+                # currently no update advertised. Clear stale pending data;
+                # an exception above is kept distinct via the success flag.
+                values[attr] = result
+                values["software_fetch_succeeded"] = True
+            else:
+                result = self._merge_partial_update(attr, getattr(previous, attr), result)
+                values[attr] = getattr(previous, attr) if result is None else result
             successful_fetches += 1
 
         return values, successful_fetches
@@ -686,7 +703,7 @@ class PolestarCoordinator(DataUpdateCoordinator[PolestarVehicleData]):
 
     def _require_software_id(self) -> str:
         """Return the software id from current state or raise a service-friendly error."""
-        software = self.data.software if self.data else None
+        software = self.data.software if self.data and self.data.software_fetch_succeeded else None
         if software and software.software_id:
             return software.software_id
         raise HomeAssistantError("No OTA software id is available for this vehicle")
@@ -695,16 +712,6 @@ class PolestarCoordinator(DataUpdateCoordinator[PolestarVehicleData]):
         self, software: CarSoftwareInfo | None, mycars: MyCarEntry | None = None,
     ) -> None:
         """Track the best known installed version for OTA entity state."""
-        if (
-            software is not None
-            and software.new_sw_version
-            and software.state in {
-                SoftwareState.UNKNOWN,
-                SoftwareState.INSTALLATION_COMPLETED,
-                SoftwareState.INSTALLATION_UNKNOWN,
-            }
-        ):
-            self._installed_version_cache = software.new_sw_version
-            return
-        if mycars is not None and mycars.details and mycars.details.installed_software_version:
-            self._installed_version_cache = mycars.details.installed_software_version
+        version = installed_software_version(software, mycars)
+        if version:
+            self._installed_version_cache = version

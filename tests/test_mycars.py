@@ -91,3 +91,11 @@ async def test_get_mycars_single_entry_fallback_and_empty_response(monkeypatch) 
         ).get_mycars()
         is None
     )
+
+    call.return_value = encode_message(1, _entry("DIFFERENT-VIN", "P4.9.9"))
+    assert (
+        await MyCarsServiceClient(
+            cast(GrpcConnection, connection), "TARGET-VIN"
+        ).get_mycars()
+        is None
+    )

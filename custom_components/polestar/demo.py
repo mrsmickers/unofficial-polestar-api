@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-import math
-from dataclasses import replace
 import logging
+import math
 import random
+from dataclasses import replace
 
 from polestar_api.models.availability import (
     Availability,
@@ -21,7 +21,11 @@ from polestar_api.models.battery import (
     ChargingStatus,
     ChargingType,
 )
-from polestar_api.models.charge_location import ChargeLocation, ChargeLocationType, OptimisedChargingType
+from polestar_api.models.charge_location import (
+    ChargeLocation,
+    ChargeLocationType,
+    OptimisedChargingType,
+)
 from polestar_api.models.charging import (
     AmpLimitResponse,
     BatteryChargeTimer,
@@ -37,14 +41,25 @@ from polestar_api.models.climate import (
     HeatOrCoolAction,
 )
 from polestar_api.models.climatization import HeatingIntensity
-from polestar_api.models.common import Coordinate, ResponseStatus, ResponseStatusCode, Timestamp, Weekday
-from polestar_api.models.common import Location
-from polestar_api.models.connectivity import ConnectivityInfo, ConnectivityStatus, NetworkType, SignalStrength
+from polestar_api.models.common import (
+    Coordinate,
+    Location,
+    ResponseStatus,
+    ResponseStatusCode,
+    Timestamp,
+    Weekday,
+)
+from polestar_api.models.connectivity import (
+    ConnectivityInfo,
+    ConnectivityStatus,
+    NetworkType,
+    SignalStrength,
+)
 from polestar_api.models.dashboard import CarDashboardData, DashboardStatus
 from polestar_api.models.exterior import (
     CentralLockStatus,
-    DoorStatus,
     DoorsStatus,
+    DoorStatus,
     ExteriorStatus,
     HoodStatus,
     LockStatus,
@@ -64,7 +79,15 @@ from polestar_api.models.health import (
     ServiceWarning,
     WasherFluidLevelWarning,
 )
-from polestar_api.models.ota import CarSoftwareInfo, ScheduleInfo, ScheduleSetBy, ScheduleStatus, Scheduler, SoftwareState
+from polestar_api.models.mycars import CarDetails, MyCarEntry
+from polestar_api.models.ota import (
+    CarSoftwareInfo,
+    ScheduleInfo,
+    Scheduler,
+    ScheduleSetBy,
+    ScheduleStatus,
+    SoftwareState,
+)
 from polestar_api.models.parking_climate_timer import (
     BatteryPreconditioning,
     ParkingClimateTimer,
@@ -129,6 +152,15 @@ class DemoVehicle:
             new_sw_version="P2.8.1",
             state=SoftwareState.INSTALLATION_COMPLETED,
             schedule_info=ScheduleInfo(scheduled_at=_NOW),
+        )
+        self._mycars_info = MyCarEntry(
+            details=CarDetails(
+                vin=self.vin,
+                model_name=self.model_name,
+                model_year=str(self.model_year),
+                installed_software_version="P2.8.1",
+                market="GB",
+            )
         )
         self._ota_schedule = Scheduler(
             status=ScheduleStatus.IDLE,
@@ -367,6 +399,9 @@ class DemoVehicle:
 
     async def get_software_info(self) -> CarSoftwareInfo:
         return self._software_info
+
+    async def get_mycars(self) -> MyCarEntry:
+        return self._mycars_info
 
     async def get_ota_schedule(self) -> Scheduler:
         return self._ota_schedule
